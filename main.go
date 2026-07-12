@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -55,6 +56,52 @@ func (cfg *apiConfig) reset(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func validate(w http.ResponseWriter, r *http.Request) {
+	type chirp struct {
+		Body string `json:"body"`
+	}
+
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	chirpval := chirp{}
+	err := decoder.Decode(&chirpval)
+	if err != nil {
+		log.Printf("Error decoding chirp body: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if len(chirpval.Body) > 140 {
+		err := respondWithJSON(w, 400, map[string]string{"Error": "Chirp is too long!"})
+		if err != nil {
+			log.Printf("Error writing response: %s", err)
+			return
+		}
+	}
+
+	err = respondWithJSON(w, 200, map[string]bool{"valid": true})
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
+		return
+	}
+
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error {
+	response, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(code)
+	_, err = w.Write(response)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
 	apiCfg := &apiConfig{}
 	mux := http.NewServeMux()
@@ -74,7 +121,9 @@ func main() {
 
 	// hits
 	mux.HandleFunc("GET /admin/metrics", apiCfg.serveHits)
-	mux.HandleFunc("POST /admin/reset", apiCfg.reset)
+	mux.HandleFunc("/admin/reset", apiCfg.reset)
+
+	mux.HandleFunc("POST /api/validate_chirp", validate)
 
 	server := &http.Server{
 		Addr:    ":" + port,
