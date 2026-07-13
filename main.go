@@ -98,6 +98,31 @@ func validate(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
+
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	var user database.User
+	err := decoder.Decode(&user)
+	if err != nil {
+		log.Printf("Error decoding request body email: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	useresp, err := cfg.database.CreateUser(r.Context(), user.Email)
+
+	if err != nil {
+		log.Printf("Error creating user: %s", err)
+		w.WriteHeader(500)
+	}
+
+	err = respondWithJSON(w, 200, useresp)
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
+		return
+	}
+}
+
 func replaceInvalidStrings(s string, invalidStrs ...string) string {
 	stringArr := strings.Fields(s)
 	for i, word := range stringArr {
@@ -159,7 +184,11 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.serveHits)
 	mux.HandleFunc("/admin/reset", apiCfg.reset)
 
+	// validate chirp
 	mux.HandleFunc("POST /api/validate_chirp", validate)
+
+	// create user
+	mux.HandleFunc("POST /api/users", apiCfg.createUser)
 
 	server := &http.Server{
 		Addr:    ":" + port,
