@@ -1,18 +1,25 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"github.com/zub-bee/first_server/internal/database"
 )
 
 const port = "8080"
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	database       *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -123,7 +130,16 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error
 }
 
 func main() {
-	apiCfg := &apiConfig{}
+	// database setup
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dbQueries := database.New(db)
+	apiCfg := &apiConfig{database: dbQueries}
 	mux := http.NewServeMux()
 
 	// file server
@@ -150,7 +166,7 @@ func main() {
 		Handler: mux,
 	}
 
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil {
 		return
 	}
