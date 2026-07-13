@@ -132,6 +132,33 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
+
+	chirp := database.CreateChirpParams{}
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	err := decoder.Decode(&chirp)
+	if err != nil {
+		log.Printf("Error decoding request body: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	// update db
+	newChirp, err := cfg.database.CreateChirp(r.Context(), chirp)
+	if err != nil {
+		log.Printf("Error creating chirp: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	err = respondWithJSON(w, 201, newChirp)
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
+		return
+	}
+}
+
 func replaceInvalidStrings(s string, invalidStrs ...string) string {
 	stringArr := strings.Fields(s)
 	for i, word := range stringArr {
@@ -199,6 +226,9 @@ func main() {
 
 	// create user
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
+
+	// create chirp
+	mux.HandleFunc("POST /api/chirps", apiCfg.createChirp)
 
 	server := &http.Server{
 		Addr:    ":" + port,

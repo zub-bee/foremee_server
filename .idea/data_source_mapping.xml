@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/sql/queries/chirps.sql" value="47f22bb5-058d-45be-9c47-5844f826eca2" />
     <file url="file://$PROJECT_DIR$/sql/queries/users.sql" value="47f22bb5-058d-45be-9c47-5844f826eca2" />
     <file url="file://$PROJECT_DIR$/sql/schema/001_users.sql" value="47f22bb5-058d-45be-9c47-5844f826eca2" />
   </component>
