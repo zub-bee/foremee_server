@@ -15,8 +15,6 @@ import (
 	"github.com/zub-bee/first_server/internal/database"
 )
 
-const port = "8080"
-
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	database       *database.Queries
@@ -55,11 +53,22 @@ func (cfg *apiConfig) serveHits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) reset(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("PLATFORM") != "dev" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	cfg.fileserverHits.Store(0)
-	_, err := w.Write([]byte(fmt.Sprintln("Hits have been reset")))
+	err := cfg.database.DeleteAllUsers(r.Context())
 	if err != nil {
+		log.Printf("Error deleting all users: %s", err)
+		return
+	}
+	cfg.fileserverHits.Store(0)
+	_, err = w.Write([]byte(fmt.Sprintln("Hits and users in database have been reset")))
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
 		return
 	}
 }
@@ -116,7 +125,7 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 	}
 
-	err = respondWithJSON(w, 200, useresp)
+	err = respondWithJSON(w, 201, useresp)
 	if err != nil {
 		log.Printf("Error writing response: %s", err)
 		return
@@ -158,6 +167,7 @@ func main() {
 	// database setup
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
+	port := os.Getenv("PORT")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal(err)
