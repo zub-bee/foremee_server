@@ -159,6 +159,23 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
+
+	// update db
+	chirps, err := cfg.database.GetAllChirps(r.Context())
+	if err != nil {
+		log.Printf("Error creating chirp: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	err = respondWithJSON(w, 200, chirps)
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
+		return
+	}
+}
+
 func replaceInvalidStrings(s string, invalidStrs ...string) string {
 	stringArr := strings.Fields(s)
 	for i, word := range stringArr {
@@ -229,6 +246,9 @@ func main() {
 
 	// create chirp
 	mux.HandleFunc("POST /api/chirps", apiCfg.createChirp)
+
+	// get all chirps
+	mux.HandleFunc("GET /api/chirps", apiCfg.getAllChirps)
 
 	server := &http.Server{
 		Addr:    ":" + port,
