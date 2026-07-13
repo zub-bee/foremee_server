@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -77,14 +78,33 @@ func validate(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error writing response: %s", err)
 			return
 		}
+		return
 	}
 
-	err = respondWithJSON(w, 200, map[string]bool{"valid": true})
+	chirpval.Body = replaceInvalidStrings(chirpval.Body, "kerfuffle", "sharbert", "fornax")
+
+	err = respondWithJSON(w, 200, map[string]string{"cleaned_body": chirpval.Body})
 	if err != nil {
 		log.Printf("Error writing response: %s", err)
 		return
 	}
 
+}
+
+func replaceInvalidStrings(s string, invalidStrs ...string) string {
+	stringArr := strings.Fields(s)
+	for i, word := range stringArr {
+
+		word = strings.ToLower(word)
+		for _, invalidStr := range invalidStrs {
+			if word == invalidStr {
+				stringArr[i] = "****"
+			}
+		}
+	}
+
+	s = strings.Join(stringArr, " ")
+	return s
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) error {
