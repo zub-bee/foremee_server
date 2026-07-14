@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/zub-bee/first_server/internal/database"
@@ -161,7 +162,8 @@ func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 
-	// update db
+	log.Printf("Getting all chirps")
+	// get from db
 	chirps, err := cfg.database.GetAllChirps(r.Context())
 	if err != nil {
 		log.Printf("Error creating chirp: %s", err)
@@ -170,6 +172,47 @@ func (cfg *apiConfig) getAllChirps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = respondWithJSON(w, 200, chirps)
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
+		return
+	}
+
+}
+
+func (cfg *apiConfig) getChirpById(w http.ResponseWriter, r *http.Request) {
+
+	id := r.PathValue("chirpID")
+	log.Printf("ID: %s", id)
+
+	if id == "" {
+
+		log.Printf("Invalid ID")
+		w.WriteHeader(400)
+		return
+
+	}
+
+	parsedUUID, err := uuid.Parse(id)
+	log.Printf("Parsed UUID: %s", parsedUUID)
+	if err != nil {
+		log.Printf("Invalid UUID string: %v", err)
+		return
+	}
+
+	log.Printf("Getting chirp with id: %s", id)
+	chirp, err := cfg.database.GetOneChirp(r.Context(), parsedUUID)
+	if fmt.Sprintf("%s", err) == "sql: no rows in result set" {
+		log.Printf("Chirp not found: %s", err)
+		w.WriteHeader(404)
+		return
+	} else if err != nil {
+		log.Printf("Error getting chirp: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	err = respondWithJSON(w, 200, chirp)
+	log.Printf("Chirp found")
 	if err != nil {
 		log.Printf("Error writing response: %s", err)
 		return
@@ -249,6 +292,9 @@ func main() {
 
 	// get all chirps
 	mux.HandleFunc("GET /api/chirps", apiCfg.getAllChirps)
+
+	// get chirps by id
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpById)
 
 	server := &http.Server{
 		Addr:    ":" + port,
