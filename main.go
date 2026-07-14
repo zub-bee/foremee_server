@@ -9,16 +9,23 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/zub-bee/first_server/internal/auth"
 	"github.com/zub-bee/first_server/internal/database"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	database       *database.Queries
+}
+
+type userPayload struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -112,25 +119,116 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
-	var user database.User
+	var user userPayload
 	err := decoder.Decode(&user)
 	if err != nil {
 		log.Printf("Error decoding request body email: %s", err)
 		w.WriteHeader(500)
 		return
 	}
-	useresp, err := cfg.database.CreateUser(r.Context(), user.Email)
+
+	var userDB database.CreateUserParams
+	userDB.Email = user.Email
+
+	userDB.HashedPassword, err = auth.HashPassword(user.Password)
+	if err != nil {
+		fmt.Printf("Error hashing password: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	useresp, err := cfg.database.CreateUser(r.Context(), userDB)
 
 	if err != nil {
 		log.Printf("Error creating user: %s", err)
 		w.WriteHeader(500)
 	}
 
-	err = respondWithJSON(w, 201, useresp)
+	newUser := struct {
+		ID             uuid.UUID `json:"id"`
+		CreatedAt      time.Time `json:"created_at"`
+		UpdatedAt      time.Time `json:"updated_at"`
+		Email          string    `json:"email"`
+	}{
+		ID:        useresp.ID,
+		CreatedAt: useresp.CreatedAt,
+		UpdatedAt: useresp.UpdatedAt,
+		Email:     useresp.Email,
+	}
+
+	err = respondWithJSON(w, 201, newUser)
 	if err != nil {
 		log.Printf("Error writing response: %s", err)
 		return
 	}
+}
+
+func (cfg *apiConfig) loginUser(w http.ResponseWriter, r *http.Request) {
+
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	var userLogin userPayload
+	err := decoder.Decode(&userLogin)
+	if err != nil {
+		log.Printf("Error decoding request body email: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if err != nil {
+		fmt.Printf("Error hashing password: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	user, err := cfg.database.GetUserByEmail(r.Context(), userLogin.Email)
+
+	if err != nil {
+		if err.Error() == "ERR_NO_ROWS" {
+			err = respondWithJSON(w, 401, map[string]string{"error": "Incorrect email or password"})
+			if err != nil {
+				log.Printf("Error writing response: %s", err)
+				return
+			}
+			log.Printf("User not found: %s", userLogin.Email)
+			return
+		}
+
+		log.Printf("Error getting user by email: %s", err)
+		w.WriteHeader(500)
+		return
+
+	}
+
+	if ok, err := auth.CheckPasswordHash(userLogin.Password, user.HashedPassword); err != nil || !ok {
+		err = respondWithJSON(w, 401, map[string]string{"error": "Incorrect email or password"})
+		if err != nil {
+			log.Printf("Error writing response: %s", err)
+			return
+		}
+		log.Printf("Invalid password for user: %s", userLogin.Email)
+		w.WriteHeader(401)
+		return
+	}
+
+	userRes := struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	}
+
+	err = respondWithJSON(w, 200, userRes)
+	if err != nil {
+		log.Printf("Error writing response: %s", err)
+		return
+	}
+
 }
 
 func (cfg *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
@@ -286,6 +384,9 @@ func main() {
 
 	// create user
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
+
+	// login
+	mux.HandleFunc("POST /api/login", apiCfg.loginUser)
 
 	// create chirp
 	mux.HandleFunc("POST /api/chirps", apiCfg.createChirp)
