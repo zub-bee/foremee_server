@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"fmt"
 	"log"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -47,16 +49,15 @@ func TestCheckPasswordHash(t *testing.T) {
 	}
 }
 
+var userId = uuid.MustParse("3d3aa131-be0c-42ec-af77-2eebfba1ae49")
+var exp = time.Duration(1784213536)
+var secret = "d2983dbb73e45b4b9f11ff215ecdb28e5a45729aaf27033e08ba06b42812f858"
+
 // create JWTs
 func TestJWT(t *testing.T) {
 
-	userId := uuid.MustParse("3d3aa131-be0c-42ec-af77-2eebfba1ae49")
-	secret := "d2983dbb73e45b4b9f11ff215ecdb28e5a45729aaf27033e08ba06b42812f858"
-	exp := time.Duration(1784213536)
-	
-
 	t.Run("create JWTs", func(t *testing.T) {
-		
+
 		jwt, err := MakeJWT(userId, secret, exp)
 
 		if err != nil {
@@ -106,10 +107,31 @@ func TestJWT(t *testing.T) {
 		}
 
 	})
-	
-}
-	
 
-// validate JWTs
-// expired tokens are rejected 
-// JWTs signed with the wrong secret are rejected
+}
+
+func TestBearerToken(t *testing.T) {
+
+	t.Run("get bearer token", func(t *testing.T) {
+
+		jwt, err := MakeJWT(userId, secret, exp)
+		if err != nil {
+			t.Fatalf("TestMakeJWT returned an error %s", err)
+		}
+
+		bearerToken := fmt.Sprintf("Bearer %v", jwt)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", bearerToken)
+		got, err := GetBearerToken(req.Header)
+
+		if got != jwt {
+			t.Errorf("got %q which does not match the token %q", got, jwt)
+		}
+
+		if err != nil {
+			t.Errorf("got an error %v", err)
+		}
+	})
+}

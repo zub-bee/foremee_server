@@ -3,6 +3,8 @@ package auth
 import (
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
@@ -20,12 +22,11 @@ func CheckPasswordHash(password, hash string) (bool, error) {
 
 func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
 	claim := jwt.RegisteredClaims{
-		Issuer:	"chirpy-access",
-		Subject: userID.String(),
-		IssuedAt: jwt.NewNumericDate(time.Now()),
+		Issuer:    "chirpy-access",
+		Subject:   userID.String(),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiresIn)),
 	}
-
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claim)
 	tokenString, err := token.SignedString([]byte(tokenSecret))
@@ -54,6 +55,21 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, err
 	}
-	
+
 	return id, nil
+}
+
+func GetBearerToken(header http.Header) (string, error) {
+
+	bearerToken := header.Get("Authorization")
+
+	if bearerToken != "" {
+		jwt, found := strings.CutPrefix(bearerToken, "Bearer ")
+		if found == true {
+			return jwt, nil
+		}
+		return "", fmt.Errorf("bearerToken wasn't retrieved")
+	}
+
+	return "", fmt.Errorf("bearerToken wasn't retrieved")
 }
